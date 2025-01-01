@@ -1,14 +1,15 @@
 # Advanced React
 
-1. Intro to re-renders
+1. React Lifecycle
 2. Elements, children and Re-renders
 3. Components as props
 4. Render props
 5. Mastering memoization
 6. Masting Reconcilation
 7. Making sense of Higher Order Component (HOC)
+8. React Best Practices
 
-## React Lifecyle
+## 1. React Lifecyle
 
 1. Mounting: Component is added to the DOM. Instance + State + DOM init
 
@@ -30,9 +31,49 @@
 - The solution is to move state down to the lowest level possible
 - The state should be as local as possible
 
-### Composition trick to reduce re-renders | Container-Presenter Pattern
+## 2. Elements, Children, and Re-rerenders
 
-- The pattern below (Container-Presenter Pattern | Wrapper Component Pattern | Children-as-a-Function pattern) refers to children being passed directly and not manipulated by the parent
+- A React component is JS function that returns a React Element
+- A React element is the "blueprint" describing what to render
+- Children can be passed into a component without the parent controlling their rendering logic
+
+```jsx
+function ChildComponent(){
+    return ...
+}
+
+function Parent(){
+  return React.createElement(ChildComponent, null, null);
+}
+```
+
+- If we log a component, we'll see something like:
+
+```jsx
+{
+    type: ChildComponent,
+    props: {
+        content: {
+            // children or other props
+            ...
+        }
+    }
+    ... // React stuff
+}
+```
+
+### Container-Presenter Pattern | Composition trick to reduce re-renders
+
+- Pattern known as Container-Presenter Pattern | Wrapper Component Pattern | Children-as-a-Function pattern
+- Container manages state, while children remain unaware of it
+- Children don't depend on parent state, they don't re-render when the parent updates its local state
+
+```text
+|- parent (wrapper | with local state)
+|--- child (unaware of the parent's state | not being re-rendered, influenced by it)
+```
+
+- The pattern below refers to children being passed directly and not manipulated by the parent
 - This pattern avoids unnecessary re-renders because of how React handles children components and state updates in the parent
 
 #### What is happening?
@@ -42,7 +83,7 @@
    - The components are passed as children. These children aren't directly tied to the parent's state
    - When the state `position` updates, React doesn't re-rendered the children because they aren't dependent on the parent's state
 
-```tsx
+```jsx
 export default function App() {
 
   return (
@@ -56,7 +97,7 @@ export default function App() {
 }
 ```
 
-```tsx
+```jsx
 function ScrollableWithMovingBlock({ content }: { content: ReactNode }) {
   const [position, setPosition] = useState(150);
 
@@ -74,48 +115,15 @@ function ScrollableWithMovingBlock({ content }: { content: ReactNode }) {
 }
 ```
 
-## React components
+## 3. Components as Props
 
-- A React component is JS function that returns a React Element
+- It increases flexibility of the component. However, we should be careful not to make it too flexible
+- Generic components are quite good to organize it. However, it can be too flexible
+- When using props to shape behavior, this can quickly become too unpractical and the behavior won't be used that often
+- Hidden default props can also be problematic
+- Using `cloneElement` is uncommon and can lead to fragile code
 
-```tsx
-function ChildComponent(){
-    return ...
-}
-
-function Parent(){
-  return React.createElement(ChildComponent, null, null);
-}
-```
-
-- If we log a component, we'll see something like:
-
-```tsx
-{
-    type: ChildComponent,
-    props: {
-        content: {
-            // children or other props
-            ...
-        }
-    }
-    ... // React stuff
-}
-```
-
-### The danger of custom hooks
-
-- The issue is that even though the state is in the hook and not the component anymore, this will still cause re-render, however, it will be more difficult to identify it
-- The component will re-render as though the state, which was updated, was part of it
-- Props change causes re-render: MYTH
-- State was changed, React will re-render the component and all its children, regardless of the props being passed
--
-
-## Components as Props
-
-- Generic components
-
-```tsx
+```jsx
 // As a button
 const App = () => {
   return (
@@ -124,6 +132,22 @@ const App = () => {
       <Button icon={<LoadingIcon />} />
     </>
   );
+};
+
+const Button = ({ icon, size, appearance }) => {
+  const defaultIconProps = {
+    // default styles: size and color
+  };
+
+  const newIconProps = {
+    // merge the default style with what is being passed
+    ...defaultIconProps,
+    ...icon.props,
+  };
+
+  const clonedIcon = React.cloneElement(icon, newIconProps); // react docs doesn't necessarily support it
+
+  return <button>{clonedIcon}</button>;
 };
 
 // As a modal
@@ -141,17 +165,158 @@ const App = () => {
     </>
   );
 };
+
+// as a Template
+const App = () => {
+  return (
+    <>
+      <Layout leftColum={<Sidebar />} rightColumn={<Gallery />}>
+        <CenterComponent />
+      </Layout>
+    </>
+  );
+};
 ```
 
-### Principles
+![alt text](image.png)
+![alt text](<Screenshot 2024-12-24 at 16.50.31.png>)
 
-#### Component Design and composition
+## 4. Render props
 
-1. Single responsibility: Each component does one thing and one thing well
-2. Composition over inheritance: Build components by combining smaller components
-3. Reusable components: Components that are reusable and modular.
+- Render Props shares code between components using a prop whose value is a function
+- A component's props is a function that returns UI. The parent controls what should be rendered inside the component
+- Render props was really popular before hooks, so we might find them in some codebases
 
-#### State management
+```jsx
+const Button = ({ icon }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const defaultIconProps = {
+    // default style: color and size
+  };
 
-1. Optimize state placement: Keep state as local as possible
-2. Avoid prop drilling
+  return (
+    <button
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      // 2. inside the component, we can this function and pass the necessary
+      data
+      {icon(defaultIconProps, isHovered)}
+    </button>
+  );
+};
+
+<Button
+  // 1. define a props, which is a function
+  icon={(props, isHovered) =>
+    isHovered ? <IconHovered {...props} /> : <Icon {...props} />
+  }
+/>;
+```
+
+## 5. Mastering memoization in React
+
+- Careful not to wrap everything in an useCallback in the hope it will prevent re-renders. Know when to use them
+- Blindly memoizing props is an anti-pattern
+
+### Memoization
+
+- It's all about comparing values in JS
+- Objects, arrays, and functions are compared by reference
+- Shallow comparison: it's a technique to compare 2 objects by checking their reference or their primitive values, without inspected them deeply
+- React relies heavily on shallow comparison for performance optimizations, especially when deciding when to re-render components
+- useCallback memoizes the function itself, useMemo calls the function and memoizes its return
+- Memoization: computer science technique to speed up the execution of a function by caching its result
+
+#### useCallback: memoization of function (callback)
+
+- It prevents recreation of the function on every render, unless its dependencies change
+- The primary purpose of useCallback -- stabilizing function references -- is most impactful when the child component is memoized with React.memo
+
+```jsx
+// recreating useCallback
+function useCallback(callback, dependencies) {
+  const ref = useRef({ callback, dependencies }); // store the previous callback and its deps
+  const depsChanged = !areDepsEqual(ref.current.dependencies, dependencies); // compare current deps with previous ones
+
+  if (depsChanged) {
+    ref.current = { callback, dependencies };
+  }
+
+  return ref.current.callback;
+
+  function areDepsEqual(oldDeps, newDeps) {
+    if (!oldDeps || !newDeps || oldDeps.length !== newDeps.length) {
+      return false;
+    }
+
+    return oldDeps.every((dep, index) => dep === newDeps[index]);
+  }
+}
+```
+
+#### Memoizing props
+
+- It's quite common to see code as:
+
+```jsx
+const Component = () => {
+  // ❌ This is absolutely useless
+  const onClick = useCallback(() => {
+    // do something
+  }, []);
+
+  return <button onClick={onClick}>click</button>;
+};
+```
+
+- There are two cases we need to memoize props
+
+1. When the props is used inside a deps array
+
+```jsx
+const Parent = () => {
+  const fetch = useCallback(() => {},[]); // passing down the function as props
+
+  return <Child onMount={onMount} />;
+};
+
+const Child = ({ onMount }) => {
+  useEffect(() => {
+    onMount();
+  }, [onMount]);
+};
+
+return ...
+```
+
+2. When the component is wrapped in React.memo
+
+```jsx
+const Child = () => {
+  return ...
+}
+
+const MemoChild = React.memo(Child)
+```
+
+- Even if we memoize the component, we should be careful not to allow non-memoized values to go down through the tree, which will make the memoization useless
+
+```jsx
+const Component = () => {
+  // this works
+  const children = useMemo(() => ..., []) // memoizing the children
+
+  return (
+    <MemoChild>{children}</MemoChild>
+  )
+}
+```
+
+3. Memoizing expensive calculations
+
+- What is an expensive calculation? -> It should be measured on a device. It also depends on the context of the app
+- Understand "expensive" by its surroundings
+- Get rid of unnecessary re-renders first
+
+<!-- video 5: 16:20 -->
