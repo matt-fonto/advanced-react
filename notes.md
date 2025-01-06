@@ -7,7 +7,8 @@
 5. Mastering memoization
 6. Masting Reconcilation
 7. Making sense of Higher Order Component (HOC)
-8. React Best Practices
+8. Controlled vs. Uncontrolled components
+9. React Best Practices
 
 ## 1. React Lifecyle
 
@@ -178,8 +179,8 @@ const App = () => {
 };
 ```
 
-![alt text](image.png)
-![alt text](<Screenshot 2024-12-24 at 16.50.31.png>)
+![Components as props](image.png)
+![Components as props 2](<Screenshot 2024-12-24 at 16.50.31.png>)
 
 ## 4. Render props
 
@@ -319,4 +320,157 @@ const Component = () => {
 - Understand "expensive" by its surroundings
 - Get rid of unnecessary re-renders first
 
-<!-- video 5: 16:20 -->
+## 6. Mastering Reconciliation
+
+```jsx
+// 1. MyComponent is rendered together with OtherStuff, since the initial state is false
+const MyComponent = () => {
+  const [isVisible, setIsVisible] = useState(false);
+  /*
+    2. Changing is visible to true
+    2.1. MyComponent re-renders
+    2.2. VisibleComponent is mounted
+    2.3. OtherStuff is unmounted
+  */
+
+  return (
+    <>
+      {isVisible ? <VisibleComponent> : <OtherStuff/>}
+    </>
+  )
+}
+
+// before, isVisible state 'false'
+{
+  type: OtherStuff,
+  ...
+}
+
+// after, isVisible state 'true'
+{
+  type: VisibleComponent,
+  ...
+}
+```
+
+- Changing the DOM directly is expensive and we should avoid doing it in modern front-end development
+- React came up with virtual DOM -- a giant object with all the components to be rendered and their respective props and children
+
+```js
+{
+  type: Component,
+  props: {
+    something: 'another thing',
+    children: {
+      type: AnotherComponent
+    }
+  }
+}
+```
+
+![Reconciliation process](image-1.png)
+
+### Components inside components
+
+- This is considered anti-pattern, due to React's reconciliation procress
+- The code below causes re-mounting and it's pretty bad. It's 2x as slow as re-rendering
+- We should avoid at all costs creating a component inside the parent component. It should be outside, so its reference remains stable
+
+```jsx
+const Component = () => {
+  const Input = () => <input />;
+
+  return <Input />;
+};
+
+{
+  type: Input,
+  ...
+}
+```
+
+### The importance of 'key' attribute
+
+- It's React's way of identifying that specific element in a list of siblings, which have the same type
+- Key is for helping React to identify items between re-renders. I
+  - It's not for performance
+  - It's not to prevent re-renders
+- We should make sure the id of the item in the list represents the data itself, not the place on the list
+- Thus, we should avoid using 'index' as key
+
+```jsx
+const MyComponent = () => {
+  const [sort, setSort] = useState("asc");
+  const sortedData = sortData(data, sort); // helper func
+
+  return (
+    <>
+      {sortedData.map((id) => (
+        <Input key={id} /> // all of them have the {type:Input}, so we need to help React in the reconciliation procress
+      ))}
+    </>
+  );
+};
+
+[
+  {
+    type: Input,
+    key: 1, // now, React has further info for the reconciliation process
+  },
+  {
+    type: Input,
+    key: 2,
+  },
+];
+```
+
+- Key is also useful to inform React when to re-render items, which the values have changed. For instance:
+
+```jsx
+const Form = () => {
+  const [isCompany, setIsCompany] = useState(false);
+
+  return (
+    <>
+      // now React is able to identify that the element's key changed and that
+      it should unmount
+      {isCompany ? (
+        <Input placeholder="..." id="business-tax" key="business-tax" />
+      ) : (
+        <Input placeholder="..." id="person-tax" key="person-tax" />
+      )}
+    </>
+  );
+};
+```
+
+## 7. Higher Order Components
+
+- Quite popular before hooks. Nowadays, it's very likely not a good idea to introduce them into new codebases
+- Good to inject props
+
+```jsx
+const withSomeLogic = (Component) => {
+  // do something
+
+  return (props) => <Component {...props} />; // returns a new component
+};
+
+const Button = ({ onClick }) => {
+  return <button onClick={onClick}>click me</button>;
+};
+
+const ButtonWithSomeLogic = withSomeLogic(Button)
+
+const MyPage = () => {
+  return (
+    <>
+      <ButtonWithSomeLogic>
+    </>
+  )
+}
+```
+
+- Even though we have hooks nowadays,
+
+<!-- Video 7: 2:46 -->
